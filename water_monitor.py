@@ -3,6 +3,11 @@ import RPi.GPIO as GPIO
 import time
 import math
 import pyrebase
+import board
+import digitalio
+import busio
+import adafruit_mcp3xxx.mcp3008 as MCP
+from adafruit_mcp3xxx.analog_in import AnalogIn
 
 config = {
 	"apiKey": "AIzaSyCEyn6ZAnY2twiLo_P9vi5nlBC6rZS1G7o",
@@ -36,9 +41,24 @@ refreshCycle = 1
 
 DS18B20="/sys/bus/w1/devices/28-0417c41707ff/w1_slave"
 
+_neutralVoltage = 1500.0
+_acidVoltage = 2032.44
+
+spi = busio.SPI(board.SCLK, board.MOSI, board.MISO)
+cs = digitalio.DigitalInOut(board.D5)
+mcp = MCP.MCP3008(spi, cs)
+chan = AnalogIn(mcp, MCP.P0)
+
 def stream_handler(message):
     global refreshCycle
-    refreshCycle = int(message["data"])
+    refreshCycle = int(message["data"]) 
+
+def getPh(voltage):
+    slope = (7.00 - 4.00)/((_neutralVoltage - 1500.0) / 3.0 - (_acidVoltage - 1500.0) / 3.0)
+    intercept = 7.0 - slope*(_neutralVoltage - 1500.0)/3.0
+    _phValue = slope*((voltage*1000)-1500.0)/3.0+intercept
+
+    return round(_phValue,2)
 
 def getTemperature():
 
@@ -84,22 +104,28 @@ def distance():
     return distance
 
 if __name__ == '__main__':
-    mystream = db.child("refresh").stream(stream_handler)
+    mystream = db.child("sensor/refresh").stream(stream_handler)
     try:
         
         while True:
             dist = distance()
+            distStr = "{:.1f}".format(dist)
+            print("formatted: ", distStr)
             print("Measured Distance = %.1f cm" %dist)
-            data = { "value": str(dist)}
-            db.child("sensor/result/ultrasonic").set(data, user['idToken'])
-            #print("ref cyc", str(refreshcycle))
-            print("ref ", refreshCycle)
+            #data = { "value": str(dist)}
+            db.child("sensor/result/ultrasonic").set(distStr, user['idToken'])
 
             temp = getTemperature()
             print("Temperature Value = ", temp)
-            data = { "value": str(temp)}
-            db.child("sensor/result/temperature").set(data, user['idToken'])
-            
+            #data = { "value": str(temp)}
+            db.child("sensor/result/temperature").set(str(temp), user['idToken'])
+
+            ph = getPh(chan.voltage)
+            print('volt: ', str(chan.voltage))
+            print('PH: ', ph)
+            #data = { "value": str(ph)}
+            db.child("sensor/result/pH").set(str(ph), user['idToken'])
+                        
             time.sleep(refreshCycle)
 
         #Reset by pressing CTRL C
