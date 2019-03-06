@@ -49,6 +49,12 @@ cs = digitalio.DigitalInOut(board.D5)
 mcp = MCP.MCP3008(spi, cs)
 chan = AnalogIn(mcp, MCP.P0)
 
+temp_values = []
+dist_values = []
+ph_values = []
+
+time_elapsed = 0;
+
 def stream_handler(message):
     global refreshCycle
     refreshCycle = int(message["data"]) 
@@ -71,9 +77,6 @@ def getTemperature():
     t = float(reading) / 1000.0
 
     return t
-
-    #print("temperature: ", t)
-
 
 def distance():
     #set Trigger to HIGH
@@ -108,23 +111,49 @@ if __name__ == '__main__':
     try:
         
         while True:
-            dist = distance()
-            distStr = "{:.1f}".format(dist)
-            print("formatted: ", distStr)
-            print("Measured Distance = %.1f cm" %dist)
-            #data = { "value": str(dist)}
-            db.child("sensor/result/ultrasonic").set(distStr, user['idToken'])
+            if (time_elapsed >= refresh_cycle):
+                totalTemp = 0
+                totalDist = 0
+                totalPh = 0
 
-            temp = getTemperature()
-            print("Temperature Value = ", temp)
-            #data = { "value": str(temp)}
-            db.child("sensor/result/temperature").set(str(temp), user['idToken'])
+                for temp in temp_values:
+                    totalTemp += temp
+                ave_temp = totalTemp / refresh_cycle
+                print('ave temp', ave_temp)
+                db.child("sensor/result/temperature").set(str(ave_temp), user['idToken'])
 
-            ph = getPh(chan.voltage)
-            print('volt: ', str(chan.voltage))
-            print('PH: ', ph)
-            #data = { "value": str(ph)}
-            db.child("sensor/result/pH").set(str(ph), user['idToken'])
+
+                for dist in dist_values:
+                    totalDist += dist
+                ave_dist = totalDist / refresh_cycle
+                print('ave dist', ave_dist)
+                db.child("sensor/result/ultrasonic").set(ave_dist, user['idToken'])   
+
+                for ph in ph_values:
+                    totalPh += ph
+                ave_ph = totalPh / refresh_cycle
+                print('ave ph', ave_ph)
+                db.child("sensor/result/pH").set(str(ave_ph), user['idToken'])
+
+                time_elapsed = 0
+                del temp_values[:]
+                del dist_values[:]
+                del ph_values[:]
+
+            else:
+                dist = distance()
+                distStr = "{:.1f}".format(dist)
+                print("formatted: ", distStr)
+                print("Measured Distance = %.1f cm" %dist)
+
+                temp = getTemperature()
+                print("Temperature Value = ", temp)
+
+                ph = getPh(chan.voltage)
+                print('volt: ', str(chan.voltage))
+                print('PH: ', ph)
+                
+                time_elapsed += 1
                         
             time.sleep(refreshCycle)
 
